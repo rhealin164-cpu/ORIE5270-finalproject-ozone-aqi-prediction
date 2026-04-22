@@ -40,7 +40,7 @@ From this directory (`data_processing/`):
    python fetch_weather_forecasting_data.py --tompkins --start 2024-01-01 --end 2025-12-31 --sleep-sec 0
    ```
 
-   From the **project** root (parent of `data_processing/`), run the same script with `python fetch_weather_forecasting_data.py` (thin wrapper that calls this folder’s module).
+   From the **project** root (parent of `data_processing/`), run: `python data_processing/fetch_weather_forecasting_data.py` with the same flags.
 
 2. **Merge + clean** — reads default AQI files under `data/raw/` (2024 and 2025 if both exist), merges with `daily_weather_forecasting.csv`, runs `clean_modeling_table` (drops rows without both AQI and core weather unless you change that), writes `data/processed/modeling_table.csv`:
 
