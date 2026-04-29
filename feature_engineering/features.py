@@ -18,6 +18,7 @@ Columns used from raw data:
     - sunshine_duration
 """
 
+import os
 import numpy as np
 import pandas as pd
 
@@ -208,12 +209,6 @@ def build_features(df: pd.DataFrame, date_col: str = "date", target_col: str = "
         7. Drop rows with NaN only in core lag/rolling columns
            (avoids over-dropping due to unrelated missing values).
 
-    Weather columns already present in modeling_table.csv are kept as-is:
-        temperature_2m_mean, temperature_2m_max, temperature_2m_min,
-        precipitation_sum, windspeed_10m_max, winddirection_10m_dominant,
-        shortwave_radiation_sum, weathercode, daylight_duration,
-        sunshine_duration, Number of Sites Reporting.
-
     Args:
         df         : Raw modeling_table DataFrame.
         date_col   : Name of the date column.
@@ -230,8 +225,6 @@ def build_features(df: pd.DataFrame, date_col: str = "date", target_col: str = "
     df = add_time_features(df, date_col=date_col)
     df = add_weather_features(df)
 
-    # Only drop rows where core engineered columns are NaN
-    # (these NaNs are expected at the start of the time series due to lag/rolling)
     required_cols = [
         "aqi_lag_1", "aqi_lag_2", "aqi_lag_3", "aqi_lag_7",
         "aqi_roll_mean_3", "aqi_roll_mean_7", "aqi_roll_std_7",
@@ -254,6 +247,7 @@ def get_X_y(df: pd.DataFrame, target_col: str = "AQI"):
         - Metadata/ID      : Defining Parameter, Defining Site, State Name,
                              county Name, location_label, forecasting
         - Unparseable str  : sunrise, sunset
+        - Raw wind degrees : winddirection_10m_dominant (replaced by sin/cos)
 
     Columns intentionally KEPT in X:
         - weathercode                 : numeric weather category (0=clear, 61=rain...)
@@ -270,20 +264,14 @@ def get_X_y(df: pd.DataFrame, target_col: str = "AQI"):
         y : pd.Series of target values.
     """
     drop_cols = [
-        # target & leakage -- use target_col so this works for any target
         target_col, "Category",
-        # date string (already encoded as month/weekday/season)
         "date",
-        # metadata / identifiers
         "Defining Parameter", "Defining Site",
         "State Name", "county Name",
         "location_label", "forecasting",
-        # raw datetime strings (unparseable by sklearn models)
         "sunrise", "sunset",
-        # wind direction in raw degrees -- replaced by wind_dir_sin / wind_dir_cos
         "winddirection_10m_dominant",
     ]
-    # Only drop columns that actually exist in the DataFrame
     drop_cols = [c for c in drop_cols if c in df.columns]
 
     X = df.drop(columns=drop_cols)
@@ -292,11 +280,61 @@ def get_X_y(df: pd.DataFrame, target_col: str = "AQI"):
 
 
 # ---------------------------------------------------------------------------
+# 8. Save features table (35 features + AQI, 36 cols total)
+# ---------------------------------------------------------------------------
+
+def save_features_table(
+    input_path: str = "data_processing/data/processed/modeling_table.csv",
+    output_path: str = "feature_engineering/features_table.csv",
+    date_col: str = "date",
+    target_col: str = "AQI",
+) -> pd.DataFrame:
+    """
+    Load raw data, run full pipeline, and save a features table
+    containing X (35 feature columns) + AQI in one CSV.
+    Non-predictive columns (metadata, date, etc.) are already removed.
+
+    Args:
+        input_path  : Path to modeling_table.csv.
+        output_path : Path to save the features table CSV.
+        date_col    : Name of the date column.
+        target_col  : Name of the AQI column.
+
+    Returns:
+        features_df : DataFrame with 36 columns (35 features + AQI).
+
+    Usage:
+        from feature_engineering.features import save_features_table
+        df = save_features_table()
+        X = df.drop(columns=["AQI"])
+        y = df["AQI"]
+    """
+    raw = pd.read_csv(input_path)
+    feature_df = build_features(raw, date_col=date_col, target_col=target_col)
+    X, y = get_X_y(feature_df, target_col=target_col)
+
+    features_df = X.copy()
+    features_df[target_col] = y.values
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    features_df.to_csv(output_path, index=False)
+    print(f"Features table saved to: {output_path}")
+    print(f"Shape: {features_df.shape}  (35 features + 1 target)")
+    return features_df
+
+
+# ---------------------------------------------------------------------------
 # Quick smoke test (run: python features.py)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    raw = pd.read_csv("data_processing/data/processed/modeling_table.csv")
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _input_csv = os.path.join(
+        _here, "data_processing", "data", "processed", "modeling_table.csv"
+    )
+    _features_csv = os.path.join(_here, "feature_engineering", "features_table.csv")
+
+    raw = pd.read_csv(_input_csv)
 
     feature_df = build_features(raw)
     print(f"Shape after feature engineering: {feature_df.shape}")
@@ -313,3 +351,5 @@ if __name__ == "__main__":
     print(f"\nX shape: {X.shape}")
     print(f"y shape: {y.shape}")
     print(f"X columns sample: {X.columns[:10].tolist()}")
+
+    save_features_table(input_path=_input_csv, output_path=_features_csv)
