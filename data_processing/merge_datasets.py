@@ -23,7 +23,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from clean_data import clean_modeling_table
+
+from data_processing.clean_data import clean_modeling_table
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_DIR = SCRIPT_DIR / "data"
